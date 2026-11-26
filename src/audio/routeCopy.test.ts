@@ -43,5 +43,14 @@ describe("speaker banner", () => {
   it("rejects unknown route ids", () => {
     assert.equal(asRouteKind("carrier-pigeon"), "unknown");
     assert.equal(asRouteKind("wired"), "wired");
+    assert.equal(asRouteKind("wifi"), "wifi");
+  });
+
+  it("explains that the two-phone mic skips Bluetooth", () => {
+    const copy = routePresentation("wifi", "192.168.1.23");
+    assert.equal(copy.title, "192.168.1.23");
+    assert.equal(copy.tone, "calm");
+    assert.match(copy.body, /Wi-Fi/);
+    assert.match(copy.body, /Bluetooth is not/);
   });
 });

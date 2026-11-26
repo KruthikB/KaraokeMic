@@ -28,6 +28,7 @@
     "test": "tsx --test src/audio/*.test.ts src/pwa/*.test.ts",
     "export:web": "expo export --platform web",
     "test:dsp": "modules/karaoke-audio/core/gradlew -p modules/karaoke-audio/core test --no-daemon",
+    "test:native": "mkdir -p modules/karaoke-audio/android/build && ${CXX:-g++} -std=c++17 -pthread -I modules/karaoke-audio/android/src/main/cpp -o modules/karaoke-audio/android/build/native-test modules/karaoke-audio/android/src/main/cpp/test/dsp_test.cpp && modules/karaoke-audio/android/build/native-test",
     "lint": "expo lint"
   },
   "private": true

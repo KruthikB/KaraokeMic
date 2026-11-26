@@ -1,6 +1,27 @@
 import { NativeModule, registerWebModule } from "expo";
 
-import { KaraokeAudioModuleEvents, KaraokeStatus, VocalConfig } from "./KaraokeAudio.types";
+import {
+  KaraokeAudioModuleEvents,
+  KaraokeStatus,
+  VocalConfig,
+  WifiLinkStats,
+  WifiPeer,
+} from "./KaraokeAudio.types";
+
+const EMPTY_WIFI: WifiLinkStats = {
+  role: "",
+  connected: false,
+  advertising: false,
+  localAddress: "",
+  localPort: 0,
+  remoteAddress: "",
+  latencyMs: 0,
+  jitterMs: 0,
+  bufferMs: 0,
+  packetsLost: 0,
+  packetsReceived: 0,
+  audioBackend: "",
+};
 
 const WEB_MESSAGE =
   "StageMic's live microphone runs in the iOS and Android app. A browser cannot pass the mic through to a speaker.";
@@ -18,8 +39,28 @@ class KaraokeAudioWebModule extends NativeModule<KaraokeAudioModuleEvents> {
       routeName: "",
       sampleRate: 0,
       lowLatency: false,
+      audioBackend: "",
+      latencyMs: 0,
+      mode: "direct",
+      wifiRole: "",
     };
   }
+
+  getWifiStats(): WifiLinkStats {
+    return EMPTY_WIFI;
+  }
+
+  getDiscoveredPeers(): WifiPeer[] {
+    return [];
+  }
+
+  getLocalAddress(): string {
+    return "";
+  }
+
+  startDiscovery(): void {}
+
+  stopDiscovery(): void {}
 
   requestPermission(): Promise<boolean> {
     return Promise.resolve(false);

@@ -7,9 +7,10 @@ import type {
   LevelEvent,
   RouteEvent,
   StateEvent,
+  WifiLinkStats,
+  WifiPeer,
 } from "../../modules/karaoke-audio/src/KaraokeAudio.types";
-import type { VocalSettings } from "./session";
-import { toNativeConfig } from "./session";
+import { toNativeConfig, type TransportConfig, type VocalSettings } from "./session";
 import { webMicEngine } from "./webEngine";
 
 const EMPTY_STATUS: KaraokeStatus = {
@@ -19,6 +20,25 @@ const EMPTY_STATUS: KaraokeStatus = {
   routeName: "",
   sampleRate: 0,
   lowLatency: false,
+  audioBackend: "",
+  latencyMs: 0,
+  mode: "direct",
+  wifiRole: "",
+};
+
+const EMPTY_WIFI: WifiLinkStats = {
+  role: "",
+  connected: false,
+  advertising: false,
+  localAddress: "",
+  localPort: 0,
+  remoteAddress: "",
+  latencyMs: 0,
+  jitterMs: 0,
+  bufferMs: 0,
+  packetsLost: 0,
+  packetsReceived: 0,
+  audioBackend: "",
 };
 
 function onDevice(): boolean {
@@ -61,14 +81,26 @@ export function readStatus(): KaraokeStatus {
   return KaraokeAudio.getStatus();
 }
 
-export async function requestMicPermission(gate = true): Promise<boolean> {
+export async function requestMicPermission(gate = true, needsMic = true): Promise<boolean> {
   if (onWeb()) {
+    if (!needsMic) {
+      return false;
+    }
     return webMicEngine.ensurePermission(gate);
   }
   if (Platform.OS === "ios") {
+    if (!needsMic) {
+      return false;
+    }
     return KaraokeAudio.requestPermission();
   }
   if (Platform.OS === "android") {
+    if (!needsMic) {
+      if (typeof Platform.Version === "number" && Platform.Version >= 33) {
+        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      }
+      return true;
+    }
     const mic = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
     if (typeof Platform.Version === "number" && Platform.Version >= 33) {
       await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
@@ -81,15 +113,57 @@ export async function requestMicPermission(gate = true): Promise<boolean> {
   return false;
 }
 
-export async function startPassthrough(settings: VocalSettings): Promise<void> {
+export async function startPassthrough(
+  settings: VocalSettings,
+  transport?: TransportConfig,
+): Promise<void> {
   if (onWeb()) {
+    if (transport?.mode === "wifi") {
+      throw new Error("Two-phone Wi-Fi mic runs in the Android app.");
+    }
     await webMicEngine.start(settings);
     return;
   }
   if (!onDevice()) {
     throw new Error("StageMic cannot find a microphone on this platform.");
   }
-  await KaraokeAudio.start(toNativeConfig(settings));
+  if (transport?.mode === "wifi" && Platform.OS !== "android") {
+    throw new Error("Two-phone Wi-Fi mic runs in the Android app.");
+  }
+  await KaraokeAudio.start(toNativeConfig(settings, transport));
+}
+
+export function beginWifiDiscovery(): void {
+  if (Platform.OS === "android") {
+    KaraokeAudio.startDiscovery();
+  }
+}
+
+export function endWifiDiscovery(): void {
+  if (Platform.OS === "android") {
+    KaraokeAudio.stopDiscovery();
+  }
+}
+
+export function readWifiPeers(): WifiPeer[] {
+  if (Platform.OS !== "android") {
+    return [];
+  }
+  return KaraokeAudio.getDiscoveredPeers();
+}
+
+export function readWifiStats(): WifiLinkStats {
+  if (Platform.OS !== "android") {
+    return EMPTY_WIFI;
+  }
+  return KaraokeAudio.getWifiStats();
+}
+
+export function readLocalAddress(): string {
+  if (Platform.OS !== "android") {
+    return "";
+  }
+  return KaraokeAudio.getLocalAddress();
 }
 
 export async function stopPassthrough(): Promise<void> {

@@ -24,21 +24,41 @@ object KaraokeRuntime {
   @Volatile var onMuteChanged: ((Boolean) -> Unit)? = null
   @Volatile var onRequestStop: (() -> Unit)? = null
 
+  // JVM names stay off setGain/setReverb/… so those functions can keep the
+  // names the Expo module calls. Kotlin still uses the property names.
+  @get:JvmName("gainLevel")
+  @set:JvmName("gainLevel")
   @Volatile var gain: Float = 0.85f
+  @get:JvmName("reverbLevel")
+  @set:JvmName("reverbLevel")
   @Volatile var reverb: Float = 0.06f
+  @get:JvmName("echoLevel")
+  @set:JvmName("echoLevel")
   @Volatile var echo: Float = 0f
+  @get:JvmName("gateEnabledFlag")
+  @set:JvmName("gateEnabledFlag")
   @Volatile var gate: Boolean = true
+  @get:JvmName("presetName")
+  @set:JvmName("presetName")
   @Volatile var preset: String = "clean"
+  @get:JvmName("mutedFlag")
+  @set:JvmName("mutedFlag")
   @Volatile var muted: Boolean = false
   @Volatile var routeKind: String = OutputRouteClassifier.UNKNOWN
   @Volatile var routeName: String = ""
   @Volatile var lastError: String? = null
+  @Volatile var mode: String = "direct"
+  @Volatile var wifiRole: String = ""
+  @Volatile var wifiHost: String = ""
+  @Volatile var wifiPort: Int = expo.modules.karaokeaudio.wifi.WifiMicPacket.DEFAULT_PORT
 
   private val mainHandler = Handler(Looper.getMainLooper())
-  private var engine: MicPassthroughEngine? = null
+  private var engine: VocalEngine? = null
   private var routeCallback: AudioDeviceCallback? = null
 
   fun isRunning(): Boolean = engine?.isRunning == true
+
+  fun capturesMicrophone(): Boolean = !(mode == "wifi" && wifiRole == "receiver")
 
   /** Banner updates before the mic is on, so a phone speaker warns about howling. */
   fun watchRoutes(context: Context) {
@@ -106,6 +126,10 @@ object KaraokeRuntime {
 
   fun lowLatency(): Boolean = engine?.lowLatency == true
 
+  fun audioBackend(): String = engine?.audioBackend ?: ""
+
+  fun latencyMs(): Double = engine?.latencyMs ?: 0.0
+
   fun applyOptions(options: Map<String, Any?>) {
     gain = (options["gain"] as? Number)?.toFloat()?.coerceIn(0f, 1.5f) ?: gain
     reverb = (options["reverb"] as? Number)?.toFloat()?.coerceIn(0f, 1f) ?: reverb
@@ -115,6 +139,22 @@ object KaraokeRuntime {
     if (requested == "clean" || requested == "studio" || requested == "hall") {
       preset = requested
       engine?.setSpace(requested)
+    }
+    val requestedMode = options["mode"] as? String
+    if (requestedMode == "direct" || requestedMode == "wifi") {
+      mode = requestedMode
+    }
+    val requestedRole = options["wifiRole"] as? String
+    if (requestedRole == "receiver" || requestedRole == "sender") {
+      wifiRole = requestedRole
+    }
+    val requestedHost = options["wifiHost"] as? String
+    if (requestedHost != null) {
+      wifiHost = requestedHost.trim()
+    }
+    val requestedPort = (options["wifiPort"] as? Number)?.toInt()
+    if (requestedPort != null && requestedPort in 1..65535) {
+      wifiPort = requestedPort
     }
     pushToEngine()
   }
@@ -164,27 +204,51 @@ object KaraokeRuntime {
   @Synchronized
   fun startEngine(context: Context) {
     val current = engine
-    if (current?.isRunning == true) {
+    if (current?.isRunning == true && sameSession(current)) {
       current.setSpace(preset)
       pushToEngine()
       return
     }
+    current?.stop()
+    engine = null
     lastError = null
-    val created = MicPassthroughEngine(
-      context = context,
-      onLevel = { rms, peak -> events?.onLevel(rms.toDouble(), peak.toDouble()) },
-      onRoute = { kind, name ->
-        routeKind = kind
-        routeName = name
-        events?.onRoute(kind, name)
-      },
-      onError = { message ->
+    if (mode == "wifi" && wifiRole == "sender" && wifiHost.isBlank()) {
+      throw IllegalArgumentException("Choose a speaker phone or enter its IP address.")
+    }
+    val created = try {
+      launch(openEngine(context))
+    } catch (error: Throwable) {
+      if (mode == "wifi") {
+        val message = error.message ?: "The Wi-Fi mic did not start."
         lastError = message
-        stopEngine()
-        events?.onError(message)
-        mainHandler.post { onRequestStop?.invoke() }
-      },
-    )
+        throw IllegalStateException(message, error)
+      }
+      android.util.Log.w("StageMic", "Oboe did not open, using AudioTrack", error)
+      try {
+        launch(fallbackEngine(context))
+      } catch (fallback: Throwable) {
+        val message = fallback.message ?: "The microphone did not start."
+        lastError = message
+        throw IllegalStateException(message, fallback)
+      }
+    }
+    engine = created
+    routeKind = created.routeKind
+    routeName = created.routeName
+    mainHandler.post {
+      events?.onState(true, muted)
+      events?.onRoute(created.routeKind, created.routeName)
+    }
+  }
+
+  private fun sameSession(current: VocalEngine): Boolean {
+    if (mode == "wifi") {
+      return current is WifiMicEngine
+    }
+    return current is OboeDirectEngine || current is MicPassthroughEngine
+  }
+
+  private fun launch(created: VocalEngine): VocalEngine {
     created.setSpace(preset)
     created.gain = gain
     created.reverbMix = reverb
@@ -196,17 +260,73 @@ object KaraokeRuntime {
       created.start()
     } catch (error: Throwable) {
       created.stop()
-      val message = error.message ?: "The microphone did not start."
+      throw error
+    }
+    return created
+  }
+
+  private fun openEngine(context: Context): VocalEngine {
+    if (mode == "wifi") {
+      val wifiRole = if (this.wifiRole == "sender") WifiMicEngine.Role.SENDER else WifiMicEngine.Role.RECEIVER
+      return WifiMicEngine(
+        context = context,
+        role = wifiRole,
+        remoteHost = wifiHost,
+        remotePort = wifiPort,
+        onLevel = levelListener(),
+        onRoute = routeListener(),
+        onError = errorListener(),
+      )
+    }
+    return OboeDirectEngine(
+      context = context,
+      onLevel = levelListener(),
+      onRoute = routeListener(),
+    )
+  }
+
+  private fun fallbackEngine(context: Context): MicPassthroughEngine {
+    return MicPassthroughEngine(
+      context = context,
+      onLevel = levelListener(),
+      onRoute = routeListener(),
+      onError = errorListener(),
+    )
+  }
+
+  private fun levelListener(): (Float, Float) -> Unit {
+    return { rms, peak -> events?.onLevel(rms.toDouble(), peak.toDouble()) }
+  }
+
+  private fun routeListener(): (String, String) -> Unit {
+    return { kind, name ->
+      routeKind = kind
+      routeName = name
+      events?.onRoute(kind, name)
+    }
+  }
+
+  private fun errorListener(): (String) -> Unit {
+    return { message ->
       lastError = message
-      throw IllegalStateException(message, error)
+      stopEngine()
+      events?.onError(message)
+      mainHandler.post { onRequestStop?.invoke() }
     }
-    engine = created
-    routeKind = created.routeKind
-    routeName = created.routeName
-    mainHandler.post {
-      events?.onState(true, muted)
-      events?.onRoute(created.routeKind, created.routeName)
+  }
+
+  internal fun wifiSnapshot(): WifiSnapshot {
+    val current = engine
+    if (current is WifiMicEngine) {
+      return current.snapshot()
     }
+    return WifiSnapshot(
+      role = wifiRole,
+      advertising = WifiLan.isAdvertising(),
+      localAddress = WifiLan.ipv4(),
+      localPort = if (wifiRole == "receiver") wifiPort else 0,
+      remoteAddress = wifiHost,
+    )
   }
 
   @Synchronized

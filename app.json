@@ -26,7 +26,11 @@
         "FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "POST_NOTIFICATIONS",
         "WAKE_LOCK",
-        "BLUETOOTH_CONNECT"
+        "BLUETOOTH_CONNECT",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_MULTICAST_STATE"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#0C0B09",

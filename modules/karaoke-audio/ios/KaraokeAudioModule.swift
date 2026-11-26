@@ -39,6 +39,35 @@ public class KaraokeAudioModule: Module {
       self.engine.status()
     }
 
+    Function("getWifiStats") { () -> [String: Any] in
+      [
+        "role": "",
+        "connected": false,
+        "advertising": false,
+        "localAddress": "",
+        "localPort": 0,
+        "remoteAddress": "",
+        "latencyMs": 0.0,
+        "jitterMs": 0.0,
+        "bufferMs": 0.0,
+        "packetsLost": 0,
+        "packetsReceived": 0,
+        "audioBackend": "AVAudioEngine",
+      ]
+    }
+
+    Function("getDiscoveredPeers") { () -> [[String: Any]] in
+      []
+    }
+
+    Function("getLocalAddress") { () -> String in
+      ""
+    }
+
+    Function("startDiscovery") {}
+
+    Function("stopDiscovery") {}
+
     AsyncFunction("requestPermission") { (promise: Promise) in
       self.engine.requestPermission { granted in
         promise.resolve(granted)

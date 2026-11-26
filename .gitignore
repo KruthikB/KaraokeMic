@@ -43,3 +43,7 @@ yarn-error.*
 # Kotlin DSP unit tests
 modules/karaoke-audio/core/.gradle/
 modules/karaoke-audio/core/build/
+
+# Android native engine build
+modules/karaoke-audio/android/.cxx/
+modules/karaoke-audio/android/build/

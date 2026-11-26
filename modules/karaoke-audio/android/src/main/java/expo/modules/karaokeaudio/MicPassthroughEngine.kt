@@ -17,7 +17,6 @@ import android.os.Looper
 import android.os.Process
 import expo.modules.karaokeaudio.dsp.Level
 import expo.modules.karaokeaudio.dsp.VocalProcessor
-import expo.modules.karaokeaudio.policy.MediaMixPolicy
 import expo.modules.karaokeaudio.policy.OutputRouteClassifier
 
 /**
@@ -32,27 +31,33 @@ class MicPassthroughEngine(
   private val onLevel: (Float, Float) -> Unit,
   private val onRoute: (String, String) -> Unit,
   private val onError: (String) -> Unit,
-) {
+) : VocalEngine {
   private val appContext = context.applicationContext
   private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
   private val mainHandler = Handler(Looper.getMainLooper())
 
-  @Volatile var gain: Float = 0.85f
-  @Volatile var reverbMix: Float = 0.06f
-  @Volatile var echoMix: Float = 0f
-  @Volatile var gateEnabled: Boolean = true
-  @Volatile var muted: Boolean = false
+  @Volatile override var gain: Float = 0.85f
+  @Volatile override var reverbMix: Float = 0.06f
+  @Volatile override var echoMix: Float = 0f
+  @Volatile override var gateEnabled: Boolean = true
+  @Volatile override var muted: Boolean = false
 
-  @Volatile var sampleRate: Int = 48_000
+  @Volatile override var sampleRate: Int = 48_000
     private set
 
-  @Volatile var lowLatency: Boolean = false
+  @Volatile override var lowLatency: Boolean = false
     private set
 
-  @Volatile var routeKind: String = OutputRouteClassifier.UNKNOWN
+  @Volatile override var audioBackend: String = AudioBackend.AUDIOTRACK_FALLBACK
     private set
 
-  @Volatile var routeName: String = ""
+  @Volatile override var latencyMs: Double = 0.0
+    private set
+
+  @Volatile override var routeKind: String = OutputRouteClassifier.UNKNOWN
+    private set
+
+  @Volatile override var routeName: String = ""
     private set
 
   private var processor = VocalProcessor(48_000)
@@ -66,15 +71,15 @@ class MicPassthroughEngine(
   private var lastLevelNs = 0L
   private var deviceCallback: AudioDeviceCallback? = null
 
-  val isRunning: Boolean
+  override val isRunning: Boolean
     get() = running
 
-  fun setSpace(name: String) {
+  override fun setSpace(name: String) {
     spaceName = name
     processor.setSpace(name)
   }
 
-  fun pushSettings() {
+  override fun pushSettings() {
     processor.gain = gain
     processor.reverbMix = reverbMix
     processor.echoMix = echoMix
@@ -83,7 +88,7 @@ class MicPassthroughEngine(
   }
 
   @SuppressLint("MissingPermission")
-  fun start() {
+  override fun start() {
     if (running) {
       pushSettings()
       return
@@ -108,6 +113,8 @@ class MicPassthroughEngine(
     } else {
       false
     }
+    audioBackend = AudioBackend.AUDIOTRACK_FALLBACK
+    latencyMs = AudioLatency.milliseconds(capture.bufferSizeInFrames + playback.bufferSizeInFrames, rate)
     running = true
     publishRoute(playback.routedDevice)
     watchRoute(playback)
@@ -119,7 +126,7 @@ class MicPassthroughEngine(
     worker.start()
   }
 
-  fun stop() {
+  override fun stop() {
     running = false
     val worker = thread
     thread = null
@@ -155,6 +162,7 @@ class MicPassthroughEngine(
     }
     track = null
     lowLatency = false
+    latencyMs = 0.0
   }
 
   private fun loop(capture: AudioRecord, playback: AudioTrack, frames: Int) {
@@ -194,25 +202,7 @@ class MicPassthroughEngine(
   }
 
   private fun prepareMixPolicy() {
-    check(!MediaMixPolicy.requestsAudioFocus) { "StageMic must not request audio focus" }
-    check(!MediaMixPolicy.startsBluetoothSco) { "StageMic must not start Bluetooth SCO" }
-    check(MediaMixPolicy.audioUsage == "USAGE_MEDIA")
-    check(MediaMixPolicy.audioMode == "MODE_NORMAL")
-    if (audioManager.mode == AudioManager.MODE_IN_COMMUNICATION) {
-      audioManager.mode = AudioManager.MODE_NORMAL
-    }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      try {
-        audioManager.clearCommunicationDevice()
-      } catch (_: Throwable) {
-        // Some devices refuse this outside a communication session.
-      }
-    }
-    @Suppress("DEPRECATION")
-    if (audioManager.isBluetoothScoOn) {
-      audioManager.stopBluetoothSco()
-      audioManager.isBluetoothScoOn = false
-    }
+    MediaMix.prepare(audioManager)
   }
 
   private fun chooseSampleRate(): Int {

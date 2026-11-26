@@ -13,6 +13,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  beginWifiDiscovery,
+  endWifiDiscovery,
   listenErrors,
   listenLevels,
   listenRoute,
@@ -23,12 +25,17 @@ import {
   pushMuted,
   pushReverb,
   pushSpace,
+  readLocalAddress,
   readPermission,
   readStatus,
+  readWifiPeers,
+  readWifiStats,
   requestMicPermission,
   startPassthrough,
   stopPassthrough,
 } from "../audio/client";
+import { formatLiveStatus } from "../audio/liveStatus";
+import type { EngineMode, WifiLinkStats, WifiPeer, WifiRole } from "../../modules/karaoke-audio/src/KaraokeAudio.types";
 import { decayLevel, smoothLevel } from "../audio/level";
 import { asRouteKind, routePresentation } from "../audio/routeCopy";
 import {
@@ -43,8 +50,10 @@ import {
 } from "../audio/session";
 import { InstallApp } from "../components/InstallApp";
 import { LevelMeter } from "../components/LevelMeter";
+import { ModePicker } from "../components/ModePicker";
 import { RouteBanner } from "../components/RouteBanner";
 import { SliderRow } from "../components/SliderRow";
+import { WifiPanel } from "../components/WifiPanel";
 import { theme } from "../theme";
 
 type Phase = "idle" | "starting" | "live" | "error";
@@ -64,6 +73,15 @@ export function StageScreen() {
   const [level, setLevel] = useState(0);
   const [sampleRate, setSampleRate] = useState(0);
   const [lowLatency, setLowLatency] = useState(false);
+  const [audioBackend, setAudioBackend] = useState("");
+  const [latencyMs, setLatencyMs] = useState(0);
+  const [engineMode, setEngineMode] = useState<EngineMode>("direct");
+  const [wifiRole, setWifiRole] = useState<WifiRole>("receiver");
+  const [peers, setPeers] = useState<WifiPeer[]>([]);
+  const [selectedHost, setSelectedHost] = useState("");
+  const [manualHost, setManualHost] = useState("");
+  const [localAddress, setLocalAddress] = useState("");
+  const [wifiStats, setWifiStats] = useState<WifiLinkStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const levelRef = useRef(0);
 
@@ -96,6 +114,53 @@ export function StageScreen() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS !== "android" || engineMode !== "wifi" || wifiRole !== "sender") {
+      return;
+    }
+    beginWifiDiscovery();
+    const timer = setInterval(() => setPeers(readWifiPeers()), 1000);
+    const kick = setTimeout(() => setPeers(readWifiPeers()), 0);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(kick);
+      endWifiDiscovery();
+    };
+  }, [engineMode, wifiRole]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || engineMode !== "wifi") {
+      return;
+    }
+    const timer = setInterval(() => setLocalAddress(readLocalAddress()), 2000);
+    const kick = setTimeout(() => setLocalAddress(readLocalAddress()), 0);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(kick);
+    };
+  }, [engineMode, wifiRole]);
+
+  useEffect(() => {
+    if (phase !== "live") {
+      return;
+    }
+    const timer = setInterval(() => {
+      const status = readStatus();
+      if (!status.running) {
+        setPhase("idle");
+        return;
+      }
+      setSampleRate(status.sampleRate);
+      setLowLatency(status.lowLatency);
+      setAudioBackend(status.audioBackend ?? "");
+      setLatencyMs(status.latencyMs ?? 0);
+      if (Platform.OS === "android" && engineMode === "wifi") {
+        setWifiStats(readWifiStats());
+      }
+    }, 500);
+    return () => clearInterval(timer);
+  }, [phase, engineMode]);
+
+  useEffect(() => {
     if (phase === "live") {
       return;
     }
@@ -124,19 +189,41 @@ export function StageScreen() {
     setPhase("starting");
     setError(null);
     try {
-      const allowed = await requestMicPermission(settings.gate);
-      setPermission(allowed ? "granted" : "denied");
-      if (!allowed) {
+      const needsMic = engineMode !== "wifi" || wifiRole !== "receiver";
+      if (engineMode === "wifi" && Platform.OS !== "android") {
+        setPhase("idle");
+        setError("Two-phone Wi-Fi mic runs in the Android app. Use Direct Speaker here.");
+        return;
+      }
+      const host = (selectedHost || manualHost).trim();
+      if (engineMode === "wifi" && wifiRole === "sender" && host.length === 0) {
+        setPhase("idle");
+        setError("Tap a speaker phone, or enter its IP address.");
+        return;
+      }
+      const allowed = await requestMicPermission(settings.gate, needsMic);
+      setPermission(needsMic ? (allowed ? "granted" : "denied") : permission);
+      if (needsMic && !allowed) {
         setPhase("idle");
         setError("StageMic needs the microphone so your voice can reach the speaker.");
         return;
       }
-      await startPassthrough(settings);
+      await startPassthrough(settings, {
+        mode: engineMode,
+        wifiRole: engineMode === "wifi" ? wifiRole : "",
+        wifiHost: engineMode === "wifi" && wifiRole === "sender" ? host : "",
+        wifiPort: 49152,
+      });
       const status = readStatus();
       setRouteKind(asRouteKind(status.route));
       setRouteName(status.routeName);
       setSampleRate(status.sampleRate);
       setLowLatency(status.lowLatency);
+      setAudioBackend(status.audioBackend ?? "");
+      setLatencyMs(status.latencyMs ?? 0);
+      if (Platform.OS === "android" && engineMode === "wifi") {
+        setWifiStats(readWifiStats());
+      }
       setMuted(status.muted);
       setPhase("live");
     } catch (caught) {
@@ -195,14 +282,40 @@ export function StageScreen() {
     pushMuted(next);
   }
 
+  async function chooseMode(next: EngineMode) {
+    if (next === engineMode) {
+      return;
+    }
+    if (phase === "live" || phase === "starting") {
+      setPhase("idle");
+      setMuted(false);
+      setWifiStats(null);
+      try {
+        await stopPassthrough();
+      } catch (caught) {
+        setError(messageFrom(caught));
+      }
+    }
+    setEngineMode(next);
+  }
+
   const live = phase === "live";
   const presentation = routePresentation(routeKind, routeName);
   const micSize = Math.min(220, Math.max(168, width * 0.46));
   const statusLine = live
-    ? `${sampleRate > 0 ? `${(sampleRate / 1000).toFixed(sampleRate % 1000 === 0 ? 0 : 1)} kHz` : "Live"} · ${
-        lowLatency ? "short buffer" : "speaker buffer"
-      } · ${Platform.OS === "web" ? "screen stays on" : "stays on in the background"}`
+    ? formatLiveStatus({
+        platform: Platform.OS,
+        mode: engineMode,
+        wifiRole,
+        audioBackend,
+        latencyMs: wifiStats?.latencyMs || latencyMs,
+        sampleRate,
+        lowLatency,
+        wifi: wifiStats,
+      })
     : "Off until you start the mic";
+  const actionLabel =
+    phase === "starting" ? "…" : live ? "Stop" : engineMode === "wifi" && wifiRole === "sender" ? "Send" : "Start";
 
   return (
     <ScrollView
@@ -244,6 +357,32 @@ export function StageScreen() {
           </View>
         ) : null}
 
+        <ModePicker mode={engineMode} onChange={(next) => void chooseMode(next)} />
+
+        {engineMode === "wifi" ? (
+          <WifiPanel
+            supported={Platform.OS === "android"}
+            role={wifiRole}
+            onRole={(next) => {
+              if (phase === "live") {
+                return;
+              }
+              setWifiRole(next);
+              setWifiStats(null);
+            }}
+            localAddress={localAddress}
+            peers={peers}
+            selectedHost={selectedHost}
+            onSelectHost={setSelectedHost}
+            manualHost={manualHost}
+            onManualHost={(value) => {
+              setManualHost(value);
+              setSelectedHost("");
+            }}
+            stats={wifiStats}
+          />
+        ) : null}
+
         <RouteBanner presentation={presentation} />
 
         <View style={styles.stage}>
@@ -270,9 +409,7 @@ export function StageScreen() {
             <Text style={[styles.micKicker, live ? styles.micKickerLive : null]}>
               {phase === "starting" ? "Starting" : live ? "Mic on" : "Mic off"}
             </Text>
-            <Text style={[styles.micAction, live ? styles.micActionLive : null]}>
-              {phase === "starting" ? "…" : live ? "Stop" : "Start"}
-            </Text>
+            <Text style={[styles.micAction, live ? styles.micActionLive : null]}>{actionLabel}</Text>
           </Pressable>
           <Text style={styles.statusLine}>{statusLine}</Text>
           {live ? (

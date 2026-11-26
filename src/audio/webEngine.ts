@@ -64,6 +64,7 @@ class WebMicEngine {
   private routeKind: KaraokeStatus["route"] = "unknown";
   private routeName = "";
   private sampleRate = 0;
+  private latencyMs = 0;
 
   private readonly levels = new Set<LevelListener>();
   private readonly routes = new Set<RouteListener>();
@@ -98,6 +99,10 @@ class WebMicEngine {
       routeName: this.routeName,
       sampleRate: this.sampleRate,
       lowLatency: this.running,
+      audioBackend: this.running ? "Web Audio" : "",
+      latencyMs: this.latencyMs,
+      mode: "direct",
+      wifiRole: "",
     };
   }
 
@@ -140,6 +145,9 @@ class WebMicEngine {
     this.context = context;
     this.stream = stream;
     this.sampleRate = context.sampleRate;
+    const outputLatency =
+      "outputLatency" in context ? Number((context as { outputLatency?: number }).outputLatency ?? 0) : 0;
+    this.latencyMs = Math.round((context.baseLatency + outputLatency) * 1000);
     await this.buildGraph(context, stream);
     if (context.state !== "running") {
       await context.resume();
@@ -173,6 +181,7 @@ class WebMicEngine {
     this.master = null;
     this.analyser = null;
     this.sampleRate = 0;
+    this.latencyMs = 0;
     if (context) {
       await context.close().catch(() => undefined);
     }

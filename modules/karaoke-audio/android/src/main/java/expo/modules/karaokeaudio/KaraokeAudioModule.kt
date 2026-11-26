@@ -69,21 +69,56 @@ class KaraokeAudioModule : Module() {
         "routeName" to KaraokeRuntime.routeName,
         "sampleRate" to KaraokeRuntime.sampleRate(),
         "lowLatency" to KaraokeRuntime.lowLatency(),
+        "audioBackend" to KaraokeRuntime.audioBackend(),
+        "latencyMs" to KaraokeRuntime.latencyMs(),
+        "mode" to KaraokeRuntime.mode,
+        "wifiRole" to KaraokeRuntime.wifiRole,
       )
+    }
+
+    Function("getWifiStats") {
+      KaraokeRuntime.wifiSnapshot().toMap()
+    }
+
+    Function("getDiscoveredPeers") {
+      WifiLan.peerList().map { peer ->
+        mapOf(
+          "name" to peer.name,
+          "host" to peer.host,
+          "port" to peer.port,
+        )
+      }
+    }
+
+    Function("getLocalAddress") {
+      WifiLan.ipv4()
+    }
+
+    Function("startDiscovery") {
+      val context = appContext.reactContext ?: return@Function null
+      WifiLan.startDiscovery(context.applicationContext)
+      null
+    }
+
+    Function("stopDiscovery") {
+      WifiLan.stopDiscovery()
+      null
     }
 
     AsyncFunction("start") { options: Map<String, Any?> ->
       val context = appContext.reactContext
         ?: throw IllegalStateException("StageMic is not ready yet.")
-      val granted = ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.RECORD_AUDIO,
-      ) == PackageManager.PERMISSION_GRANTED
-      if (!granted) {
-        throw SecurityException("Microphone permission is not granted.")
-      }
       KaraokeRuntime.events = events
       KaraokeRuntime.applyOptions(options)
+      if (KaraokeRuntime.capturesMicrophone()) {
+        val granted = ContextCompat.checkSelfPermission(
+          context,
+          Manifest.permission.RECORD_AUDIO,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+          throw SecurityException("Microphone permission is not granted.")
+        }
+      }
       KaraokeRuntime.startEngine(context.applicationContext)
       ContextCompat.startForegroundService(
         context,
