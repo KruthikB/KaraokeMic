@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["KaraokeAudioModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.karaokeaudio.KaraokeAudioModule"]
+  }
+}

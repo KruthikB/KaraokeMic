@@ -1,0 +1,30 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.karaokeaudio'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.karaokeaudio"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+    consumerProguardFiles 'consumer-rules.pro'
+  }
+  sourceSets {
+    main {
+      // Vocal DSP and routing policy are plain Kotlin so they can be unit
+      // tested on a JVM. The audio thread in this module calls into them.
+      java.srcDirs += "$projectDir/../core/src/main/kotlin"
+    }
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  implementation 'androidx.core:core-ktx:1.13.1'
+}

@@ -1,0 +1,8 @@
+{
+  "name": "karaoke-audio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native microphone passthrough for StageMic",
+  "main": "src/KaraokeAudioModule.ts",
+  "types": "src/KaraokeAudioModule.ts"
+}
