@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "StageMic",
+    "slug": "stagemic",
+    "scheme": "stagemic",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0C0B09",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.stagemic.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "StageMic uses the microphone so your voice plays through the connected speaker while your music app keeps playing.",
+        "UIBackgroundModes": ["audio"]
+      }
+    },
+    "android": {
+      "package": "com.stagemic.app",
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "POST_NOTIFICATIONS",
+        "WAKE_LOCK",
+        "BLUETOOTH_CONNECT"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#0C0B09",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "StageMic",
+      "shortName": "StageMic",
+      "description": "Live karaoke microphone. Your voice goes to the speaker while music apps keep playing.",
+      "lang": "en",
+      "themeColor": "#0C0B09",
+      "backgroundColor": "#0C0B09",
+      "display": "standalone"
+    }
+  }
+}

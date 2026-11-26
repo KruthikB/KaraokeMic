@@ -1,0 +1,24 @@
+Pod::Spec.new do |s|
+  s.name           = 'KaraokeAudio'
+  s.version        = '1.0.0'
+  s.summary        = 'Live microphone passthrough for StageMic'
+  s.description    = 'Sends the iPhone microphone to a Bluetooth or wired speaker without pausing other music apps.'
+  s.author         = ''
+  s.homepage       = 'https://docs.expo.dev/modules/'
+  s.platforms      = {
+    :ios => '16.4',
+    :tvos => '16.4'
+  }
+  s.source         = { git: '' }
+  s.static_framework = true
+
+  s.dependency 'ExpoModulesCore'
+  s.frameworks = 'AVFoundation', 'AudioToolbox'
+
+  # Swift/Objective-C compatibility
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+  }
+
+  s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+end
