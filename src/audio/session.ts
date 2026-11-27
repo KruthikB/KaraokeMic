@@ -1,4 +1,8 @@
-import type { VocalConfig } from "../../modules/karaoke-audio/src/KaraokeAudio.types";
+import type {
+  EngineMode,
+  VocalConfig,
+  WifiRole,
+} from "../../modules/karaoke-audio/src/KaraokeAudio.types";
 
 export const GAIN_MAX = 1.5;
 
@@ -115,13 +119,24 @@ export function applyGate(current: VocalSettings, gate: boolean): VocalSettings 
   return next;
 }
 
-export function toNativeConfig(settings: VocalSettings): VocalConfig {
+export type TransportConfig = {
+  mode: EngineMode;
+  wifiRole: WifiRole | "";
+  wifiHost: string;
+  wifiPort: number;
+};
+
+export function toNativeConfig(settings: VocalSettings, transport?: TransportConfig): VocalConfig {
   return {
     gain: clampGain(settings.gain),
     reverb: clampUnit(settings.reverb),
     echo: clampUnit(settings.echo),
     gate: settings.gate,
     preset: settings.space,
+    mode: transport?.mode ?? "direct",
+    wifiRole: transport?.wifiRole ?? "",
+    wifiHost: transport?.wifiHost?.trim() ?? "",
+    wifiPort: transport?.wifiPort ?? 49152,
   };
 }
 

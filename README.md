@@ -13,6 +13,17 @@ The hosted app is [https://kruthikb.github.io/KaraokeMic/](https://kruthikb.gith
 
 Chrome only allows the microphone on **https://** or on **localhost**. The GitHub Pages address is https, so the mic works there. While StageMic is open on the screen, the phone stays awake and Spotify or YouTube can keep playing in the background. Locking the phone or leaving Chrome can stop the mic.
 
+## Install the Android app from Chrome
+
+Pushes to `main` build a debug APK and attach it to the rolling release [latest-android](https://github.com/KruthikB/KaraokeMic/releases/tag/latest-android). You do not need Android Studio or a signing key.
+
+1. On the Android phone, open this link in **Chrome**: [stagemic-android.apk](https://github.com/KruthikB/KaraokeMic/releases/download/latest-android/stagemic-android.apk).
+2. Download `stagemic-android.apk`. If Chrome warns you, choose to download it anyway.
+3. Open the download. If Android asks, allow Chrome to install unknown apps, then tap Install.
+4. Open StageMic. Allow the microphone and notifications.
+
+The same file is also saved as a GitHub Actions artifact named `stagemic-android` on each build.
+
 Pushes to `main` build this site. In the GitHub repo, set **Settings → Pages → Source** to **GitHub Actions** if the first deploy asks you to. The workflow uses the `/KaraokeMic` base path so the files load under that folder.
 
 To try the same app on this computer, at the site root `/`:
@@ -42,6 +53,8 @@ The music app keeps playing. StageMic does not pause it and does not turn it dow
 StageMic uses its own audio code. **Expo Go cannot run it.** The commands below build and install a real app.
 
 ## Install on Android
+
+To install a build that is already compiled, use [Install the Android app from Chrome](#install-the-android-app-from-chrome). The steps below compile it on this computer and install it over USB.
 
 1. In this folder, install the JavaScript packages:
 
@@ -96,6 +109,19 @@ You need a Mac for this.
 
 While the mic is on, iOS shows an orange dot or an orange status bar. That means StageMic is still listening. It is supposed to stay on when you lock the screen or switch apps. Tap **Stop** in StageMic when you are done.
 
+## Direct Speaker and Wi-Fi Mic
+
+The Android app has a switch at the top of the screen.
+
+**Direct Speaker** is one phone. The microphone and the speaker are the same device. StageMic opens a C++ Oboe stream in low-latency exclusive mode when the phone allows it, and falls back to the Kotlin `AudioTrack` engine if Oboe does not open. The screen shows the backend that is actually running (`AAudio Low-Latency`, `OpenSL ES`, or `AudioTrack Fallback`) and the latency in milliseconds, from the stream's buffer size. A cable is still the shortest path. Bluetooth stereo is still late, and StageMic does not switch it into phone-call mode.
+
+**Wi-Fi Mic (2 Phones)** keeps Bluetooth out of the vocal path. Both phones join the same Wi-Fi. Latency on a normal home network is about 15–25 ms.
+
+- **Speaker Receiver**, on the phone plugged into the speaker. Tap it, then Start. StageMic listens on UDP port **49152**, advertises itself as `StageMic` on the local network, and shows its Wi-Fi IP address in large type. Incoming 48 kHz mono frames sit in a jitter buffer of about 10–20 ms and play through the same low-latency output. Spotify or YouTube can keep playing on this phone. The screen shows connection, latency, jitter, and the buffer.
+- **Handheld Mic**, on the phone you hold. Nearby receivers appear for a one-tap connect. If discovery does not find the other phone, type the IP address shown on the receiver. This phone captures the built-in mic, runs the noise gate, echo, reverb, and limiter, and sends small raw PCM frames. It keeps running from the StageMic notification after you leave the app.
+
+The receiver does not need the microphone permission. The handheld phone does. Mute and Stop on the notification still work for both roles.
+
 ## How to sing with it
 
 1. Connect the speaker first, so StageMic can show you which output it will use.
@@ -121,7 +147,7 @@ The gate cannot cancel a howl that is already louder than your voice. If it howl
 
 Bluetooth stereo is late, often by 150–250 milliseconds. Your voice can feel behind the music. That delay is in the speaker, not something StageMic can remove while keeping stereo quality.
 
-A wired AUX or USB-C cable is much closer to real time. Use a cable if the delay bothers you.
+A wired AUX or USB-C cable is much closer to real time. Use a cable if the delay bothers you. The two-phone Wi-Fi mic also skips Bluetooth: the voice goes over Wi-Fi to the phone that is plugged into the speaker.
 
 StageMic stays on stereo Bluetooth on purpose. The phone-call Bluetooth mode is sometimes a little faster, but it makes the music mono and muffled. StageMic does not switch the speaker into that mode. If the banner says **Bluetooth call audio**, disconnect and reconnect the speaker, or use a cable.
 
@@ -139,9 +165,12 @@ StageMic does not take audio focus, and it does not duck other apps.
 npm run typecheck
 npm test
 npm run test:dsp
+npm run test:native
 ```
 
-`npm run test:dsp` needs a JDK (17 or 21). The first run downloads Gradle. It tests the noise gate, echo, reverb, limiter, and the speaker-routing rules. It does not need a phone.
+`npm run test:dsp` needs a JDK (17 or 21). The first run downloads Gradle. It tests the noise gate, echo, reverb, limiter, the speaker-routing rules, and the Wi-Fi packet and jitter buffer. It does not need a phone.
+
+`npm run test:native` compiles the C++ DSP and lock-free ring on this computer and runs those tests. It does not need the Android SDK.
 
 `npm run lint` checks the TypeScript.
 
@@ -149,7 +178,7 @@ npm run test:dsp
 
 - `src/` — the screen, the presets, and the speaker-banner text
 - `modules/karaoke-audio/ios/` — Swift `AVAudioEngine` graph (gate, echo, reverb, mic fader)
-- `modules/karaoke-audio/android/` — Kotlin `AudioRecord` / `AudioTrack` passthrough and the foreground service
+- `modules/karaoke-audio/android/` — Oboe / AAudio low-latency engine, the AudioTrack fallback, the Wi-Fi mic, and the foreground service
 - `modules/karaoke-audio/core/` — the vocal effects and routing rules, plus their tests
 
 The `ios/` and `android/` folders at the repo root are generated by `expo prebuild` or `expo run`. They are not committed. Change native behavior in `app.json` or in `modules/karaoke-audio`, not by editing those generated folders by hand.

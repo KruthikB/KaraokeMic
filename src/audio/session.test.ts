@@ -65,5 +65,20 @@ describe("vocal settings", () => {
     assert.equal(clamped.gain, GAIN_MAX);
     assert.equal(clamped.reverb, 1);
     assert.equal(clamped.echo, 0);
+    assert.equal(clamped.mode, "direct");
+  });
+
+  it("sends the Wi-Fi role and address with the vocal settings", () => {
+    const config = toNativeConfig(applyPreset("clean"), {
+      mode: "wifi",
+      wifiRole: "sender",
+      wifiHost: " 192.168.1.23 ",
+      wifiPort: 49152,
+    });
+    assert.equal(config.mode, "wifi");
+    assert.equal(config.wifiRole, "sender");
+    assert.equal(config.wifiHost, "192.168.1.23");
+    assert.equal(config.wifiPort, 49152);
+    assert.equal(config.preset, "clean");
   });
 });

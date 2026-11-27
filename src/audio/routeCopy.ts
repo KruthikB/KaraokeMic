@@ -15,6 +15,7 @@ const ROUTE_KINDS: readonly RouteKind[] = [
   "wired",
   "airplay",
   "phone",
+  "wifi",
   "unknown",
 ];
 
@@ -55,6 +56,13 @@ export function routePresentation(kind: RouteKind, deviceName: string): RoutePre
         title: name || "AirPlay speaker",
         body: "AirPlay adds delay, often more than Bluetooth. A cable is closer to real time.",
         tone: "warn",
+      };
+    case "wifi":
+      return {
+        eyebrow: "Wi-Fi mic",
+        title: name || "Other phone",
+        body: "Your voice is streaming over local Wi-Fi to the phone plugged into the speaker. Bluetooth is not on this path. Keep both phones on the same Wi-Fi.",
+        tone: "calm",
       };
     case "phone":
       return {

@@ -73,14 +73,20 @@ class KaraokeForegroundService : Service() {
   }
 
   private fun startInForeground() {
-    val type = when {
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
-        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-          ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
-        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-      else -> 0
+    val playback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+    } else {
+      0
     }
+    val microphone = if (
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+      KaraokeRuntime.capturesMicrophone()
+    ) {
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+    } else {
+      0
+    }
+    val type = microphone or playback
     ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
   }
 
@@ -101,10 +107,13 @@ class KaraokeForegroundService : Service() {
       "Stop",
       servicePendingIntent(ACTION_STOP, 12),
     ).build()
-    val text = if (muted) {
-      "Muted. The mic stays open until you stop. Music apps keep playing."
-    } else {
-      "Mic is live on the speaker. Music apps keep playing."
+    val text = when {
+      muted -> "Muted. The mic stays open until you stop. Music apps keep playing."
+      KaraokeRuntime.mode == "wifi" && KaraokeRuntime.wifiRole == "sender" ->
+        "Handheld mic is streaming over Wi-Fi. Music apps keep playing."
+      KaraokeRuntime.mode == "wifi" && KaraokeRuntime.wifiRole == "receiver" ->
+        "Speaker receiver is live. Music apps keep playing."
+      else -> "Mic is live on the speaker. Music apps keep playing."
     }
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_stat_mic)

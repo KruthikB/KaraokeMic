@@ -135,6 +135,10 @@ final class KaraokeEngine {
       "routeName": route.name,
       "sampleRate": Int(session.sampleRate.rounded()),
       "lowLatency": wantRunning && buffer > 0 && buffer <= 0.012,
+      "audioBackend": "AVAudioEngine",
+      "latencyMs": buffer > 0 ? buffer * 1000.0 : 0.0,
+      "mode": "direct",
+      "wifiRole": "",
     ]
   }
 

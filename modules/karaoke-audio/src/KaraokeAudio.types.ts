@@ -4,7 +4,12 @@ export type RouteKind =
   | "wired"
   | "airplay"
   | "phone"
+  | "wifi"
   | "unknown";
+
+export type EngineMode = "direct" | "wifi";
+
+export type WifiRole = "receiver" | "sender";
 
 export type VocalConfig = {
   gain: number;
@@ -13,6 +18,10 @@ export type VocalConfig = {
   gate: boolean;
   /** Room algorithm: clean, studio, or hall. */
   preset: string;
+  mode?: EngineMode;
+  wifiRole?: WifiRole | "";
+  wifiHost?: string;
+  wifiPort?: number;
 };
 
 export type KaraokeStatus = {
@@ -22,6 +31,31 @@ export type KaraokeStatus = {
   routeName: string;
   sampleRate: number;
   lowLatency: boolean;
+  audioBackend: string;
+  latencyMs: number;
+  mode: EngineMode | string;
+  wifiRole: WifiRole | string;
+};
+
+export type WifiPeer = {
+  name: string;
+  host: string;
+  port: number;
+};
+
+export type WifiLinkStats = {
+  role: string;
+  connected: boolean;
+  advertising: boolean;
+  localAddress: string;
+  localPort: number;
+  remoteAddress: string;
+  latencyMs: number;
+  jitterMs: number;
+  bufferMs: number;
+  packetsLost: number;
+  packetsReceived: number;
+  audioBackend: string;
 };
 
 export type LevelEvent = {
@@ -53,6 +87,11 @@ export type KaraokeAudioModuleEvents = {
 export type KaraokeNative = {
   getPermission(): string;
   getStatus(): KaraokeStatus;
+  getWifiStats(): WifiLinkStats;
+  getDiscoveredPeers(): WifiPeer[];
+  getLocalAddress(): string;
+  startDiscovery(): void;
+  stopDiscovery(): void;
   requestPermission(): Promise<boolean>;
   start(config: VocalConfig): Promise<void>;
   stop(): Promise<void>;

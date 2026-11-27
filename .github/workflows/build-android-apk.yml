@@ -1,0 +1,102 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Install NDK, CMake, and SDK packages
+        run: |
+          set -eu
+          yes | sdkmanager --licenses >/dev/null || true
+          PACKAGES=(
+            "platforms;android-37.0"
+            "platforms;android-36"
+            "build-tools;37.0.0"
+            "build-tools;36.0.0"
+            "ndk;27.1.12297006"
+            "cmake;3.22.1"
+            "cmake;3.30.5"
+          )
+          EXTRA_NDK="$(grep -oE 'ndkVersion[[:space:]]*=[[:space:]]*"[0-9.]+"' android/build.gradle | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+          if [ -n "${EXTRA_NDK}" ] && [ "${EXTRA_NDK}" != "27.1.12297006" ]; then
+            PACKAGES+=("ndk;${EXTRA_NDK}")
+          fi
+          printf 'Installing %s\n' "${PACKAGES[@]}"
+          yes | sdkmanager --install "${PACKAGES[@]}"
+
+      - name: Assemble a debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
+
+      - name: Name the installable APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk stagemic-android.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stagemic-android
+          path: stagemic-android.apk
+          if-no-files-found: error
+
+      - name: Publish the rolling GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'EOF'
+          Debug build of StageMic for Android. It installs from Chrome without a custom signing key.
+
+          1. On the phone, open this release in Chrome.
+          2. Download `stagemic-android.apk`.
+          3. Open the download and allow Chrome to install apps when Android asks.
+          4. Open StageMic, allow the microphone, and tap Start.
+
+          Direct Speaker uses the low-latency Oboe engine on this phone. Wi-Fi Mic uses two phones on the same Wi-Fi and does not use Bluetooth.
+          EOF
+          if gh release view latest-android >/dev/null 2>&1; then
+            gh release upload latest-android stagemic-android.apk --clobber
+            gh release edit latest-android --title "StageMic Android" --notes-file release-notes.md --latest=false
+          else
+            gh release create latest-android stagemic-android.apk \
+              --title "StageMic Android" \
+              --notes-file release-notes.md \
+              --latest=false
+          fi

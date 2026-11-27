@@ -1,10 +1,21 @@
 import { NativeModule, requireNativeModule } from "expo";
 
-import { KaraokeAudioModuleEvents, KaraokeStatus, VocalConfig } from "./KaraokeAudio.types";
+import {
+  KaraokeAudioModuleEvents,
+  KaraokeStatus,
+  VocalConfig,
+  WifiLinkStats,
+  WifiPeer,
+} from "./KaraokeAudio.types";
 
 declare class KaraokeAudioModule extends NativeModule<KaraokeAudioModuleEvents> {
   getPermission(): string;
   getStatus(): KaraokeStatus;
+  getWifiStats(): WifiLinkStats;
+  getDiscoveredPeers(): WifiPeer[];
+  getLocalAddress(): string;
+  startDiscovery(): void;
+  stopDiscovery(): void;
   requestPermission(): Promise<boolean>;
   start(config: VocalConfig): Promise<void>;
   stop(): Promise<void>;
