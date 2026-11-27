@@ -34,11 +34,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # setup-android@v3 still runs `sdkmanager tools`. That package was removed
+      # from the SDK repository, so the first run on main failed immediately.
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          set -eu
+          SDK_ROOT="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -fsSL -o "$RUNNER_TEMP/cmdtools.zip" https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+          unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$RUNNER_TEMP/cmdtools"
+          mv "$RUNNER_TEMP/cmdtools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
 
       - name: Generate the Android project
         run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Point Gradle at the SDK
+        run: printf 'sdk.dir=%s\n' "$ANDROID_HOME" > android/local.properties
 
       - name: Install NDK, CMake, and SDK packages
         run: |
